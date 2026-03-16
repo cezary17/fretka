@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Use `fretka` to search the web when you need up-to-date information, documentation references, or external context that isn't available in the local codebase or your training data.
+Search the public web for up-to-date information, documentation, or context missing from the local codebase and your training data.
 
 ## Usage
 
@@ -20,19 +20,19 @@ fretka "<search query>"
 ### Examples
 
 ```bash
-# Search for documentation
+# Find documentation
 fretka "python requests retry with backoff"
 
-# Get fewer results for a focused query
+# Narrow a focused lookup
 fretka -t 3 "typescript extend interface with optional properties"
 
-# Broad research with more results
+# Explore a broad topic
 fretka -t 10 "kubernetes pod graceful shutdown"
 ```
 
 ## Output Format
 
-Results are returned as a numbered markdown list. Each entry contains a linked title and a text snippet:
+Returns a numbered markdown list. Each entry pairs a linked title with a text snippet:
 
 ```
 1. [Page Title](https://example.com/page)
@@ -46,20 +46,19 @@ Results are returned as a numbered markdown list. Each entry contains a linked t
 
 ## When to Use
 
-- **Unfamiliar APIs or libraries** — search for docs, examples, or changelogs.
-- **Error messages** — paste the error string as the query to find known issues or fixes.
-- **Best practices** — search for recommended patterns when the right approach isn't obvious.
-- **Version-specific information** — find release notes, migration guides, or compatibility details.
+- **Unfamiliar APIs or libraries** — find docs, examples, or changelogs.
+- **Error messages** — paste the exact error string to surface known fixes.
+- **Best practices** — find recommended patterns when the right approach is unclear.
+- **Version-specific details** — find release notes, migration guides, or compatibility tables.
 
-## When NOT to Use
+## Prefer Other Tools Instead When
 
-- Information already available in the local codebase (use grep/find instead).
-- Questions answerable from your own training data with high confidence.
-- Queries requiring authenticated or private content (fretka only accesses public web results).
+- The answer exists in the local codebase — use grep/find.
+- Your training data answers the question with high confidence.
+- The query requires authentication — fretka searches only public results.
 
-## Tips for Effective Queries
+## Writing Effective Queries
 
-- Be specific: `"reqwest timeout configuration rust"` beats `"http timeout"`.
-- Include the language or framework name to narrow results.
-- Quote exact error messages for best matches.
-- Use `-t 3` for well-defined lookups, `-t 10` when exploring a topic.
+- Name the language or framework: `"reqwest timeout configuration rust"` outperforms `"http timeout"`.
+- Quote exact error messages for precise matches.
+- Use `-t 3` for targeted lookups, `-t 10` for broad exploration.

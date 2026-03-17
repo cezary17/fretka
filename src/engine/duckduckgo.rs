@@ -57,7 +57,11 @@ impl DuckDuckGoEngine {
             .await?)
     }
 
-    pub fn parse_results(&self, html: &str, top_k: usize) -> Result<Vec<SearchResult>, SearchError> {
+    pub fn parse_results(
+        &self,
+        html: &str,
+        top_k: usize,
+    ) -> Result<Vec<SearchResult>, SearchError> {
         if top_k == 0 {
             return Err(SearchError::TopKTooLow);
         }
@@ -156,7 +160,9 @@ mod tests {
 
     #[test]
     fn empty_html_returns_no_results() {
-        let results = engine().parse_results("<html><body></body></html>", 10).unwrap();
+        let results = engine()
+            .parse_results("<html><body></body></html>", 10)
+            .unwrap();
         assert!(results.is_empty());
     }
 

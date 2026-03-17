@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use scraper::{Html, Selector};
 
 use crate::types::SearchResult;
@@ -12,7 +14,9 @@ impl DuckDuckGoEngine {
     }
 
     pub async fn search(&self) -> Result<String, reqwest::Error> {
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()?;
         client
             .post("https://lite.duckduckgo.com/lite/")
             .header("User-Agent", "Lynx/2.8.9rel.1")

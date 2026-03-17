@@ -25,7 +25,13 @@ struct Cli {
 async fn main() {
     let cli = Cli::parse();
 
-    let engine = DuckDuckGoEngine::new(cli.query);
+    let engine = match DuckDuckGoEngine::new(cli.query) {
+        Ok(engine) => engine,
+        Err(e) => {
+            eprintln!("error: {e}");
+            std::process::exit(1);
+        }
+    };
     let html = match engine.search().await {
         Ok(html) => html,
         Err(e) => {
@@ -37,7 +43,18 @@ async fn main() {
             std::process::exit(1);
         }
     };
-    let results = engine.parse_results(&html, cli.top_k);
+    let results = match engine.parse_results(&html, cli.top_k) {
+        Ok(results) => results,
+        Err(e) => {
+            eprintln!("error: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    if results.is_empty() {
+        eprintln!("no results found for query");
+        std::process::exit(1);
+    }
 
     print!("{}", format_as_markdown(&results));
 }

@@ -1,11 +1,17 @@
 mod engine;
+mod fetcher;
 mod formatter;
+mod truncator;
 mod types;
+
+use std::time::Duration;
 
 use clap::{Parser, ValueEnum};
 use engine::duckduckgo::DuckDuckGoEngine;
+use fetcher::Fetcher;
 use formatter::json::format_as_json;
 use formatter::markdown::format_as_markdown;
+use truncator::max_length::MaxLengthTruncator;
 
 #[derive(Clone, ValueEnum)]
 enum OutputFormat {
@@ -27,16 +33,35 @@ struct Cli {
     #[arg(short, long, value_enum, default_value_t = OutputFormat::Markdown)]
     format: OutputFormat,
 
+    /// Fetch and extract content from result URLs
+    #[arg(long)]
+    fetch: bool,
+
     /// Show detailed error messages
     #[arg(short, long)]
     verbose: bool,
+}
+
+fn build_client() -> Result<reqwest::Client, reqwest::Error> {
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .user_agent("Lynx/2.8.9rel.1")
+        .build()
 }
 
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
 
-    let engine = match DuckDuckGoEngine::new(cli.query) {
+    let client = match build_client() {
+        Ok(client) => client,
+        Err(e) => {
+            eprintln!("error: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    let engine = match DuckDuckGoEngine::new(cli.query, client.clone()) {
         Ok(engine) => engine,
         Err(e) => {
             eprintln!("error: {e}");
@@ -54,7 +79,7 @@ async fn main() {
             std::process::exit(1);
         }
     };
-    let results = match engine.parse_results(&html, cli.top_k) {
+    let mut results = match engine.parse_results(&html, cli.top_k) {
         Ok(results) => results,
         Err(e) => {
             eprintln!("error: {e}");
@@ -65,6 +90,12 @@ async fn main() {
     if results.is_empty() {
         eprintln!("no results found for query");
         std::process::exit(1);
+    }
+
+    if cli.fetch {
+        let truncator = MaxLengthTruncator::new(5000);
+        let fetcher = Fetcher::new(client, truncator);
+        results = fetcher.fetch_results(results).await;
     }
 
     let output = match cli.format {

@@ -10,7 +10,7 @@ pub fn format_as_markdown(results: &[SearchResult]) -> String {
                 i + 1,
                 result.title,
                 result.url,
-                result.snippet
+                result.content
             )
         })
         .collect::<Vec<_>>()

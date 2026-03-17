@@ -5,7 +5,7 @@ edition = "2024"
 description = "A web-search CLI for coding agents"
 license = "MIT"
 repository = "https://github.com/cezary17/fretka"
-keywords = ["search", "cli", "web-search", "duckduckgo", "agent"]
+keywords = ["search", "cli", "web-search", "agent"]
 categories = ["command-line-utilities"]
 
 [dependencies]

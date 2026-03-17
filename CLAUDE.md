@@ -9,22 +9,24 @@ A CLI tool that searches DuckDuckGo (via its lite/HTML interface) and outputs re
 ## Commands
 
 - **Build:** `cargo build`
-- **Run:** `cargo run -- "search query"` (use `-t N` for top-k results, `-v` for verbose errors)
+- **Run:** `cargo run -- "search query"` (use `-t N` for top-k results, `--fetch` to extract page content, `-v` for verbose errors)
 - **Check:** `cargo check`
 - **Lint:** `cargo clippy`
 - **Format:** `cargo fmt`
-- **Test:** `cargo test` (no tests yet)
+- **Test:** `cargo test`
 
 ## Architecture
 
-The codebase follows a simple pipeline: **search engine → parse HTML → format output**.
+The codebase follows a pipeline: **search engine → parse HTML → fetch & extract (optional) → truncate → format output**.
 
-- **`src/main.rs`** — CLI entry point using `clap`. Wires together engine and formatter.
-- **`src/types.rs`** — Shared `SearchResult` struct (title, url, snippet).
+- **`src/main.rs`** — CLI entry point using `clap`. Builds a shared `reqwest::Client` and wires together engine, fetcher, and formatter.
+- **`src/types.rs`** — Shared `SearchResult` struct (title, url, content).
 - **`src/engine/`** — Search engine implementations. Currently only `duckduckgo.rs`, which POSTs to `lite.duckduckgo.com` and scrapes results using the `scraper` crate.
-- **`src/formatter/`** — Output formatters. Currently only `markdown.rs`.
+- **`src/fetcher/`** — Concurrent page fetcher. Uses `reqwest` to GET result URLs in parallel and `dom_smoothie` to extract readable content as markdown.
+- **`src/truncator/`** — `Truncator` trait with `MaxLengthTruncator` (default 5000 chars). Applied to fetched content.
+- **`src/formatter/`** — Output formatters (`markdown.rs`, `json.rs`).
 
-The engine trait pattern is implicit (not yet a formal trait) — `DuckDuckGoEngine` has `search()` (async, returns raw HTML) and `parse_results()` (sync, returns `Vec<SearchResult>`).
+The engine trait pattern is implicit (not yet a formal trait) — `DuckDuckGoEngine` has `search()` (async, returns raw HTML) and `parse_results()` (sync, returns `Vec<SearchResult>`). A shared `reqwest::Client` (with user-agent and timeout) is created in `main.rs` and cloned into both the engine and fetcher.
 
 ## Key dependencies
 
@@ -32,6 +34,8 @@ The engine trait pattern is implicit (not yet a formal trait) — `DuckDuckGoEng
 - `scraper` — HTML parsing and CSS selector queries
 - `clap` — CLI argument parsing (derive mode)
 - `tokio` — Async runtime
+- `dom_smoothie` — Readability-based content extraction (Mozilla Readability.js port)
+- `futures` — `join_all` for concurrent fetches
 
 ## Notes
 

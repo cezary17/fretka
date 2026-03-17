@@ -45,6 +45,14 @@ fn escape_json_string(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    struct JsonResult {
+        title: String,
+        url: String,
+        snippet: String,
+    }
 
     fn make_result(title: &str, url: &str, snippet: &str) -> SearchResult {
         SearchResult {
@@ -54,19 +62,28 @@ mod tests {
         }
     }
 
+    /// Parse the JSON output and verify it round-trips correctly.
+    fn assert_roundtrips(results: &[SearchResult]) {
+        let json = format_as_json(results);
+        let parsed: Vec<JsonResult> =
+            serde_json::from_str(&json).expect("output must be valid JSON");
+        assert_eq!(parsed.len(), results.len());
+        for (parsed, original) in parsed.iter().zip(results.iter()) {
+            assert_eq!(parsed.title, original.title);
+            assert_eq!(parsed.url, original.url);
+            assert_eq!(parsed.snippet, original.snippet);
+        }
+    }
+
     #[test]
     fn empty_results() {
-        assert_eq!(format_as_json(&[]), "[]\n");
+        assert_roundtrips(&[]);
     }
 
     #[test]
     fn single_result() {
         let results = vec![make_result("Rust", "https://rust-lang.org", "A language")];
-        let json = format_as_json(&results);
-        assert_eq!(
-            json,
-            "[\n    {\n      \"title\": \"Rust\",\n      \"url\": \"https://rust-lang.org\",\n      \"snippet\": \"A language\"\n    }\n]\n"
-        );
+        assert_roundtrips(&results);
     }
 
     #[test]
@@ -75,10 +92,37 @@ mod tests {
             make_result("One", "https://one.com", "First"),
             make_result("Two", "https://two.com", "Second"),
         ];
-        let json = format_as_json(&results);
-        assert!(json.starts_with("[\n"));
-        assert!(json.ends_with("]\n"));
-        assert!(json.contains("},\n    {"));
+        assert_roundtrips(&results);
+    }
+
+    #[test]
+    fn roundtrips_special_characters() {
+        let results = vec![make_result(
+            "say \"hello\" \\ world",
+            "https://example.com/path?a=1&b=2",
+            "line1\nline2\ttab\r\nend",
+        )];
+        assert_roundtrips(&results);
+    }
+
+    #[test]
+    fn roundtrips_control_characters() {
+        let results = vec![make_result(
+            "null\u{0000}char",
+            "https://example.com",
+            "unit-sep\u{001f}here",
+        )];
+        assert_roundtrips(&results);
+    }
+
+    #[test]
+    fn roundtrips_unicode_and_line_separators() {
+        let results = vec![make_result(
+            "café ☕ \u{2028}line-sep\u{2029}para-sep",
+            "https://example.com/émoji/🦀",
+            "日本語テスト",
+        )];
+        assert_roundtrips(&results);
     }
 
     #[test]
@@ -89,40 +133,5 @@ mod tests {
     #[test]
     fn escapes_backslashes() {
         assert_eq!(escape_json_string(r"path\to\file"), r#""path\\to\\file""#);
-    }
-
-    #[test]
-    fn escapes_newlines_and_tabs() {
-        assert_eq!(escape_json_string("a\nb\tc"), r#""a\nb\tc""#);
-    }
-
-    #[test]
-    fn escapes_carriage_return() {
-        assert_eq!(escape_json_string("a\rb"), r#""a\rb""#);
-    }
-
-    #[test]
-    fn escapes_control_characters() {
-        let input = String::from('\u{0000}');
-        assert_eq!(escape_json_string(&input), r#""\u0000""#);
-
-        let input = String::from('\u{001f}');
-        assert_eq!(escape_json_string(&input), r#""\u001f""#);
-    }
-
-    #[test]
-    fn escapes_line_separators() {
-        assert_eq!(escape_json_string("\u{2028}"), r#""\u2028""#);
-        assert_eq!(escape_json_string("\u{2029}"), r#""\u2029""#);
-    }
-
-    #[test]
-    fn passes_plain_ascii_through() {
-        assert_eq!(escape_json_string("hello world"), r#""hello world""#);
-    }
-
-    #[test]
-    fn passes_unicode_through() {
-        assert_eq!(escape_json_string("café ☕"), r#""café ☕""#);
     }
 }

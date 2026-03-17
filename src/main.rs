@@ -51,5 +51,10 @@ async fn main() {
         }
     };
 
+    if results.is_empty() {
+        eprintln!("no results found for query");
+        std::process::exit(1);
+    }
+
     print!("{}", format_as_markdown(&results));
 }

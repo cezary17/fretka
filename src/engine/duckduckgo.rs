@@ -7,8 +7,6 @@ use crate::types::SearchResult;
 #[derive(Debug)]
 pub enum SearchError {
     EmptyQuery,
-    TopKTooLow,
-    TopKTooHigh,
     Http(reqwest::Error),
 }
 
@@ -16,8 +14,6 @@ impl fmt::Display for SearchError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             SearchError::EmptyQuery => write!(f, "empty string passed as query"),
-            SearchError::TopKTooLow => write!(f, "top_k must be greater than zero"),
-            SearchError::TopKTooHigh => write!(f, "top_k must be 100 or less"),
             SearchError::Http(e) => write!(f, "{e}"),
         }
     }
@@ -59,13 +55,6 @@ impl DuckDuckGoEngine {
         html: &str,
         top_k: usize,
     ) -> Result<Vec<SearchResult>, SearchError> {
-        if top_k == 0 {
-            return Err(SearchError::TopKTooLow);
-        }
-        if top_k > 100 {
-            return Err(SearchError::TopKTooHigh);
-        }
-
         let document = Html::parse_document(html);
         let link_selector = Selector::parse("a.result-link").unwrap();
         let snippet_selector = Selector::parse("td.result-snippet").unwrap();
@@ -195,20 +184,6 @@ mod tests {
 
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].title, "A");
-    }
-
-    #[test]
-    fn top_k_zero_returns_error() {
-        let html = make_html(&[("A", "https://a.com", "a")]);
-        let err = engine().parse_results(&html, 0).unwrap_err();
-        assert_eq!(err.to_string(), "top_k must be greater than zero");
-    }
-
-    #[test]
-    fn top_k_over_100_returns_error() {
-        let html = make_html(&[("A", "https://a.com", "a")]);
-        let err = engine().parse_results(&html, 101).unwrap_err();
-        assert_eq!(err.to_string(), "top_k must be 100 or less");
     }
 
     #[test]

@@ -25,9 +25,9 @@ struct Cli {
     /// Search query: (ex: fretka "rust lang docs")
     query: String,
 
-    /// Number of top results to display
-    #[arg(short, long, default_value_t = 5)]
-    top_k: usize,
+    /// Number of top results to display (1-100)
+    #[arg(short, long, default_value_t = 5, value_parser = clap::value_parser!(u64).range(1..=100))]
+    top_k: u64,
 
     /// Output format: markdown or json
     #[arg(short, long, value_enum, default_value_t = OutputFormat::Markdown)]
@@ -79,7 +79,7 @@ async fn main() {
             std::process::exit(1);
         }
     };
-    let mut results = match engine.parse_results(&html, cli.top_k) {
+    let mut results = match engine.parse_results(&html, cli.top_k as usize) {
         Ok(results) => results,
         Err(e) => {
             eprintln!("error: {e}");

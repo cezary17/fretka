@@ -1,12 +1,13 @@
 mod engine;
 mod fetcher;
 mod formatter;
+mod installer;
 mod truncator;
 mod types;
 
 use std::time::Duration;
 
-use clap::{Parser, ValueEnum};
+use clap::{Parser, Subcommand, ValueEnum};
 use engine::duckduckgo::DuckDuckGoEngine;
 use fetcher::Fetcher;
 use formatter::json::format_as_json;
@@ -19,11 +20,20 @@ enum OutputFormat {
     Json,
 }
 
+#[derive(Subcommand)]
+enum Commands {
+    /// Install fretka skill into coding tool(s)
+    InstallSkill,
+}
+
 #[derive(Parser)]
 #[command(name = "fretka", about = "Search DuckDuckGo and extract text")]
 struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+
     /// Search query: (ex: fretka "rust lang docs")
-    query: String,
+    query: Option<String>,
 
     /// Number of top results to display (1-100)
     #[arg(short, long, default_value_t = 5, value_parser = clap::value_parser!(u64).range(1..=100))]
@@ -53,6 +63,19 @@ fn build_client() -> Result<reqwest::Client, reqwest::Error> {
 async fn main() {
     let cli = Cli::parse();
 
+    if let Some(Commands::InstallSkill) = cli.command {
+        installer::run();
+        return;
+    }
+
+    let query = match cli.query {
+        Some(q) => q,
+        None => {
+            eprintln!("error: a search query is required (ex: fretka \"rust lang docs\")");
+            std::process::exit(1);
+        }
+    };
+
     let client = match build_client() {
         Ok(client) => client,
         Err(e) => {
@@ -61,7 +84,7 @@ async fn main() {
         }
     };
 
-    let engine = match DuckDuckGoEngine::new(cli.query, client.clone()) {
+    let engine = match DuckDuckGoEngine::new(query, client.clone()) {
         Ok(engine) => engine,
         Err(e) => {
             eprintln!("error: {e}");

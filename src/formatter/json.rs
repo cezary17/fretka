@@ -9,10 +9,10 @@ pub fn format_as_json(results: &[SearchResult]) -> String {
         .iter()
         .map(|result| {
             format!(
-                "    {{\n      \"title\": {},\n      \"url\": {},\n      \"snippet\": {}\n    }}",
+                "    {{\n      \"title\": {},\n      \"url\": {},\n      \"content\": {}\n    }}",
                 escape_json_string(&result.title),
                 escape_json_string(&result.url),
-                escape_json_string(&result.snippet)
+                escape_json_string(&result.content)
             )
         })
         .collect();
@@ -51,14 +51,14 @@ mod tests {
     struct JsonResult {
         title: String,
         url: String,
-        snippet: String,
+        content: String,
     }
 
     fn make_result(title: &str, url: &str, snippet: &str) -> SearchResult {
         SearchResult {
             title: title.to_string(),
             url: url.to_string(),
-            snippet: snippet.to_string(),
+            content: snippet.to_string(),
         }
     }
 
@@ -71,7 +71,7 @@ mod tests {
         for (parsed, original) in parsed.iter().zip(results.iter()) {
             assert_eq!(parsed.title, original.title);
             assert_eq!(parsed.url, original.url);
-            assert_eq!(parsed.snippet, original.snippet);
+            assert_eq!(parsed.content, original.content);
         }
     }
 

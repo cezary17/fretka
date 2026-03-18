@@ -1,5 +1,4 @@
 use std::fmt;
-use std::time::Duration;
 
 use scraper::{Html, Selector};
 
@@ -33,23 +32,21 @@ impl From<reqwest::Error> for SearchError {
 #[derive(Debug)]
 pub struct DuckDuckGoEngine {
     query: String,
+    client: reqwest::Client,
 }
 
 impl DuckDuckGoEngine {
-    pub fn new(query: String) -> Result<Self, SearchError> {
+    pub fn new(query: String, client: reqwest::Client) -> Result<Self, SearchError> {
         if query.trim().is_empty() {
             return Err(SearchError::EmptyQuery);
         }
-        Ok(Self { query })
+        Ok(Self { query, client })
     }
 
     pub async fn search(&self) -> Result<String, SearchError> {
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(10))
-            .build()?;
-        Ok(client
+        Ok(self
+            .client
             .post("https://lite.duckduckgo.com/lite/")
-            .header("User-Agent", "Lynx/2.8.9rel.1")
             .form(&[("q", &self.query)])
             .send()
             .await?
@@ -83,7 +80,7 @@ impl DuckDuckGoEngine {
             .map(|(link, snippet)| {
                 let title = link.text().collect::<Vec<_>>().join(" ").trim().to_string();
                 let url = link.value().attr("href").unwrap_or("").to_string();
-                let snippet = snippet
+                let content = snippet
                     .text()
                     .collect::<Vec<_>>()
                     .join(" ")
@@ -93,7 +90,7 @@ impl DuckDuckGoEngine {
                 SearchResult {
                     title,
                     url,
-                    snippet,
+                    content,
                 }
             })
             .collect())
@@ -105,7 +102,8 @@ mod tests {
     use super::*;
 
     fn engine() -> DuckDuckGoEngine {
-        DuckDuckGoEngine::new("test".to_string()).unwrap()
+        let client = reqwest::Client::new();
+        DuckDuckGoEngine::new("test".to_string(), client).unwrap()
     }
 
     fn make_html(results: &[(&str, &str, &str)]) -> String {
@@ -127,7 +125,7 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].title, "Rust Lang");
         assert_eq!(results[0].url, "https://rust-lang.org");
-        assert_eq!(results[0].snippet, "A systems language");
+        assert_eq!(results[0].content, "A systems language");
     }
 
     #[test]
@@ -171,7 +169,7 @@ mod tests {
         let html = make_html(&[("Title", "https://x.com", "  lots   of   spaces  ")]);
         let results = engine().parse_results(&html, 10).unwrap();
 
-        assert_eq!(results[0].snippet, "lots of spaces");
+        assert_eq!(results[0].content, "lots of spaces");
     }
 
     #[test]
@@ -215,13 +213,15 @@ mod tests {
 
     #[test]
     fn empty_query_returns_error() {
-        let err = DuckDuckGoEngine::new("".to_string()).unwrap_err();
+        let client = reqwest::Client::new();
+        let err = DuckDuckGoEngine::new("".to_string(), client).unwrap_err();
         assert_eq!(err.to_string(), "empty string passed as query");
     }
 
     #[test]
     fn whitespace_only_query_returns_error() {
-        let err = DuckDuckGoEngine::new("   ".to_string()).unwrap_err();
+        let client = reqwest::Client::new();
+        let err = DuckDuckGoEngine::new("   ".to_string(), client).unwrap_err();
         assert_eq!(err.to_string(), "empty string passed as query");
     }
 }

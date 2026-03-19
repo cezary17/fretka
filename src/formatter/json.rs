@@ -15,10 +15,12 @@ pub fn format_as_json(results: &[SearchResult]) -> String {
                 escape_json_string(&result.content)
             );
             if !result.metadata.is_empty() {
-                let meta_entries: Vec<String> = result
-                    .metadata
+                let mut keys: Vec<&String> = result.metadata.keys().collect();
+                keys.sort();
+                let meta_entries: Vec<String> = keys
                     .iter()
-                    .map(|(k, v)| {
+                    .map(|k| {
+                        let v = &result.metadata[k.as_str()];
                         format!(
                             "        {}: {}",
                             escape_json_string(k),

@@ -1,13 +1,39 @@
 use std::collections::HashMap;
 
 use quick_xml::Reader;
-use quick_xml::events::Event;
+use quick_xml::events::{BytesStart, Event};
 
 use super::{SearchEngine, SearchError};
 use crate::types::{
     META_AUTHORS, META_CATEGORIES, META_COMMENT, META_DOI, META_JOURNAL_REF, META_PDF_URL,
     META_PUBLISHED, META_UPDATED, SearchResult,
 };
+
+const VALID_SORT_VALUES: &[&str] = &["relevance", "submittedDate", "lastUpdatedDate"];
+
+fn parse_link_attrs(e: &BytesStart) -> (String, String, String) {
+    let mut rel = String::new();
+    let mut href = String::new();
+    let mut link_title = String::new();
+    for attr in e.attributes().flatten() {
+        match attr.key.local_name().as_ref() {
+            b"rel" => rel = String::from_utf8_lossy(&attr.value).to_string(),
+            b"href" => href = String::from_utf8_lossy(&attr.value).to_string(),
+            b"title" => link_title = String::from_utf8_lossy(&attr.value).to_string(),
+            _ => {}
+        }
+    }
+    (rel, href, link_title)
+}
+
+fn parse_category_term(e: &BytesStart) -> Option<String> {
+    for attr in e.attributes().flatten() {
+        if attr.key.local_name().as_ref() == b"term" {
+            return Some(String::from_utf8_lossy(&attr.value).to_string());
+        }
+    }
+    None
+}
 
 #[derive(Debug)]
 pub struct ArxivEngine {
@@ -27,10 +53,17 @@ impl ArxivEngine {
         if query.trim().is_empty() {
             return Err(SearchError::EmptyQuery);
         }
+        let sort_by = sort_by.unwrap_or_else(|| "relevance".to_string());
+        if !VALID_SORT_VALUES.contains(&sort_by.as_str()) {
+            return Err(SearchError::Parse(format!(
+                "invalid sort value '{sort_by}', expected one of: {}",
+                VALID_SORT_VALUES.join(", ")
+            )));
+        }
         Ok(Self {
             query,
             client,
-            sort_by: sort_by.unwrap_or_else(|| "relevance".to_string()),
+            sort_by,
             max_results,
         })
     }
@@ -89,24 +122,7 @@ impl SearchEngine for ArxivEngine {
                             in_author = true;
                         }
                         "link" if in_entry => {
-                            let mut rel = String::new();
-                            let mut href = String::new();
-                            let mut link_title = String::new();
-                            for attr in e.attributes().flatten() {
-                                match attr.key.local_name().as_ref() {
-                                    b"rel" => {
-                                        rel = String::from_utf8_lossy(&attr.value).to_string()
-                                    }
-                                    b"href" => {
-                                        href = String::from_utf8_lossy(&attr.value).to_string()
-                                    }
-                                    b"title" => {
-                                        link_title =
-                                            String::from_utf8_lossy(&attr.value).to_string()
-                                    }
-                                    _ => {}
-                                }
-                            }
+                            let (rel, href, link_title) = parse_link_attrs(e);
                             if rel == "alternate" {
                                 url = href;
                             } else if link_title == "pdf" {
@@ -114,11 +130,8 @@ impl SearchEngine for ArxivEngine {
                             }
                         }
                         "category" if in_entry => {
-                            for attr in e.attributes().flatten() {
-                                if attr.key.local_name().as_ref() == b"term" {
-                                    categories
-                                        .push(String::from_utf8_lossy(&attr.value).to_string());
-                                }
+                            if let Some(term) = parse_category_term(e) {
+                                categories.push(term);
                             }
                         }
                         _ if in_entry => {
@@ -199,24 +212,7 @@ impl SearchEngine for ArxivEngine {
                     let local_name = String::from_utf8_lossy(e.local_name().as_ref()).to_string();
                     match local_name.as_str() {
                         "link" => {
-                            let mut rel = String::new();
-                            let mut href = String::new();
-                            let mut link_title = String::new();
-                            for attr in e.attributes().flatten() {
-                                match attr.key.local_name().as_ref() {
-                                    b"rel" => {
-                                        rel = String::from_utf8_lossy(&attr.value).to_string()
-                                    }
-                                    b"href" => {
-                                        href = String::from_utf8_lossy(&attr.value).to_string()
-                                    }
-                                    b"title" => {
-                                        link_title =
-                                            String::from_utf8_lossy(&attr.value).to_string()
-                                    }
-                                    _ => {}
-                                }
-                            }
+                            let (rel, href, link_title) = parse_link_attrs(e);
                             if rel == "alternate" {
                                 url = href;
                             } else if link_title == "pdf" {
@@ -224,11 +220,8 @@ impl SearchEngine for ArxivEngine {
                             }
                         }
                         "category" => {
-                            for attr in e.attributes().flatten() {
-                                if attr.key.local_name().as_ref() == b"term" {
-                                    categories
-                                        .push(String::from_utf8_lossy(&attr.value).to_string());
-                                }
+                            if let Some(term) = parse_category_term(e) {
+                                categories.push(term);
                             }
                         }
                         "primary_category" => {

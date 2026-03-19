@@ -1,14 +1,17 @@
-use crate::types::SearchResult;
+use crate::types::{
+    META_AUTHORS, META_CATEGORIES, META_COMMENT, META_DOI, META_JOURNAL_REF, META_PDF_URL,
+    META_PUBLISHED, META_UPDATED, SearchResult,
+};
 
 const KNOWN_KEYS: &[&str] = &[
-    "authors",
-    "categories",
-    "published",
-    "updated",
-    "doi",
-    "journal_ref",
-    "comment",
-    "pdf_url",
+    META_AUTHORS,
+    META_CATEGORIES,
+    META_PUBLISHED,
+    META_UPDATED,
+    META_DOI,
+    META_JOURNAL_REF,
+    META_COMMENT,
+    META_PDF_URL,
 ];
 
 fn display_key(key: &str) -> String {
@@ -39,7 +42,7 @@ pub fn format_as_markdown(results: &[SearchResult]) -> String {
                 }
                 for (key, value) in &result.metadata {
                     if !KNOWN_KEYS.contains(&key.as_str()) {
-                        parts.push(format!("   **{}:** {}", key, value));
+                        parts.push(format!("   **{key}:** {value}"));
                     }
                 }
                 parts.push(String::new());
@@ -95,5 +98,21 @@ mod tests {
         let output = format_as_markdown(&results);
         assert!(output.contains("[Rust](https://rust-lang.org)"));
         assert!(output.contains("A language"));
+    }
+
+    #[test]
+    fn display_key_title_cases_underscored_keys() {
+        assert_eq!(display_key("journal_ref"), "Journal Ref");
+        assert_eq!(display_key("pdf_url"), "Pdf Url");
+    }
+
+    #[test]
+    fn display_key_single_word() {
+        assert_eq!(display_key("authors"), "Authors");
+    }
+
+    #[test]
+    fn display_key_empty_string() {
+        assert_eq!(display_key(""), "");
     }
 }

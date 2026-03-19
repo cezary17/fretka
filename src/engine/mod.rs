@@ -9,7 +9,6 @@ pub enum SearchError {
     EmptyQuery,
     Http(reqwest::Error),
     Parse(String),
-    Other(String),
 }
 
 impl fmt::Display for SearchError {
@@ -18,7 +17,6 @@ impl fmt::Display for SearchError {
             SearchError::EmptyQuery => write!(f, "empty string passed as query"),
             SearchError::Http(e) => write!(f, "{e}"),
             SearchError::Parse(e) => write!(f, "parse error: {e}"),
-            SearchError::Other(e) => write!(f, "{e}"),
         }
     }
 }

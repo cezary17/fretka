@@ -82,6 +82,31 @@ fn build_client() -> Result<reqwest::Client, reqwest::Error> {
         .build()
 }
 
+async fn run_engine(
+    engine: &impl SearchEngine,
+    top_k: usize,
+    verbose: bool,
+) -> Vec<types::SearchResult> {
+    let raw = match engine.search().await {
+        Ok(r) => r,
+        Err(e) => {
+            if verbose {
+                eprintln!("search failed: {e}");
+            } else {
+                eprintln!("search failed");
+            }
+            std::process::exit(1);
+        }
+    };
+    match engine.parse_results(&raw, top_k) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("error: {e}");
+            std::process::exit(1);
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
@@ -129,24 +154,7 @@ async fn main() {
                     std::process::exit(1);
                 }
             };
-            let raw = match engine.search().await {
-                Ok(r) => r,
-                Err(e) => {
-                    if cli.verbose {
-                        eprintln!("search failed: {e}");
-                    } else {
-                        eprintln!("search failed");
-                    }
-                    std::process::exit(1);
-                }
-            };
-            match engine.parse_results(&raw, top_k) {
-                Ok(r) => r,
-                Err(e) => {
-                    eprintln!("error: {e}");
-                    std::process::exit(1);
-                }
-            }
+            run_engine(&engine, top_k, cli.verbose).await
         }
         EngineType::Arxiv => {
             let engine = match ArxivEngine::new(query, client.clone(), sort_by, top_k) {
@@ -156,24 +164,7 @@ async fn main() {
                     std::process::exit(1);
                 }
             };
-            let raw = match engine.search().await {
-                Ok(r) => r,
-                Err(e) => {
-                    if cli.verbose {
-                        eprintln!("search failed: {e}");
-                    } else {
-                        eprintln!("search failed");
-                    }
-                    std::process::exit(1);
-                }
-            };
-            match engine.parse_results(&raw, top_k) {
-                Ok(r) => r,
-                Err(e) => {
-                    eprintln!("error: {e}");
-                    std::process::exit(1);
-                }
-            }
+            run_engine(&engine, top_k, cli.verbose).await
         }
     };
 
@@ -185,7 +176,15 @@ async fn main() {
     if cli.fetch {
         let truncator = MaxLengthTruncator::new(5000);
         let fetcher = Fetcher::new(client, truncator);
-        results = fetcher.fetch_results(results).await;
+        let outcomes = fetcher.fetch_results(results).await;
+        if cli.verbose {
+            for outcome in &outcomes {
+                if let Some(warning) = &outcome.warning {
+                    eprintln!("warning: {warning}");
+                }
+            }
+        }
+        results = outcomes.into_iter().map(|o| o.result).collect();
     }
 
     let output = match cli.format {

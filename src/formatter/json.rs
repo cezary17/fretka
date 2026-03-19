@@ -8,12 +8,31 @@ pub fn format_as_json(results: &[SearchResult]) -> String {
     let entries: Vec<String> = results
         .iter()
         .map(|result| {
-            format!(
-                "    {{\n      \"title\": {},\n      \"url\": {},\n      \"content\": {}\n    }}",
+            let mut json = format!(
+                "    {{\n      \"title\": {},\n      \"url\": {},\n      \"content\": {}",
                 escape_json_string(&result.title),
                 escape_json_string(&result.url),
                 escape_json_string(&result.content)
-            )
+            );
+            if !result.metadata.is_empty() {
+                let meta_entries: Vec<String> = result
+                    .metadata
+                    .iter()
+                    .map(|(k, v)| {
+                        format!(
+                            "        {}: {}",
+                            escape_json_string(k),
+                            escape_json_string(v)
+                        )
+                    })
+                    .collect();
+                json.push_str(&format!(
+                    ",\n      \"metadata\": {{\n{}\n      }}",
+                    meta_entries.join(",\n")
+                ));
+            }
+            json.push_str("\n    }");
+            json
         })
         .collect();
 
@@ -52,6 +71,8 @@ mod tests {
         title: String,
         url: String,
         content: String,
+        #[serde(default)]
+        metadata: Option<std::collections::HashMap<String, String>>,
     }
 
     fn make_result(title: &str, url: &str, snippet: &str) -> SearchResult {
@@ -59,6 +80,7 @@ mod tests {
             title: title.to_string(),
             url: url.to_string(),
             content: snippet.to_string(),
+            metadata: std::collections::HashMap::new(),
         }
     }
 
@@ -133,5 +155,30 @@ mod tests {
     #[test]
     fn escapes_backslashes() {
         assert_eq!(escape_json_string(r"path\to\file"), r#""path\\to\\file""#);
+    }
+
+    #[test]
+    fn renders_metadata_in_json() {
+        let mut meta = std::collections::HashMap::new();
+        meta.insert("authors".to_string(), "Alice".to_string());
+        let results = vec![SearchResult {
+            title: "Paper".to_string(),
+            url: "https://arxiv.org".to_string(),
+            content: "Abstract".to_string(),
+            metadata: meta,
+        }];
+        let json = format_as_json(&results);
+        let parsed: Vec<JsonResult> = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            parsed[0].metadata.as_ref().unwrap().get("authors").unwrap(),
+            "Alice"
+        );
+    }
+
+    #[test]
+    fn no_metadata_key_when_empty() {
+        let results = vec![make_result("Title", "https://example.com", "Content")];
+        let json = format_as_json(&results);
+        assert!(!json.contains("metadata"));
     }
 }

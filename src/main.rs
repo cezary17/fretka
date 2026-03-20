@@ -8,6 +8,7 @@ mod types;
 use std::time::Duration;
 
 use clap::{Parser, Subcommand, ValueEnum};
+use engine::brave::BraveEngine;
 use engine::duckduckgo::DuckDuckGoEngine;
 use fetcher::Fetcher;
 use formatter::json::format_as_json;
@@ -18,6 +19,12 @@ use truncator::max_length::MaxLengthTruncator;
 enum OutputFormat {
     Markdown,
     Json,
+}
+
+#[derive(Clone, ValueEnum)]
+enum SearchEngine {
+    DuckDuckGo,
+    Brave,
 }
 
 #[derive(Subcommand)]
@@ -42,6 +49,10 @@ struct Cli {
     /// Output format: markdown or json
     #[arg(short, long, value_enum, default_value_t = OutputFormat::Markdown)]
     format: OutputFormat,
+
+    /// Search engine to use: duckduckgo or brave
+    #[arg(short, long, value_enum, default_value_t = SearchEngine::DuckDuckGo)]
+    engine: SearchEngine,
 
     /// Fetch and extract content from result URLs
     #[arg(long)]
@@ -84,29 +95,60 @@ async fn main() {
         }
     };
 
-    let engine = match DuckDuckGoEngine::new(query, client.clone()) {
-        Ok(engine) => engine,
-        Err(e) => {
-            eprintln!("error: {e}");
-            std::process::exit(1);
-        }
-    };
-    let html = match engine.search().await {
-        Ok(html) => html,
-        Err(e) => {
-            if cli.verbose {
-                eprintln!("search failed: {e}");
-            } else {
-                eprintln!("search failed");
+    let mut results = match cli.engine {
+        SearchEngine::DuckDuckGo => {
+            let engine = match DuckDuckGoEngine::new(query, client.clone()) {
+                Ok(engine) => engine,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    std::process::exit(1);
+                }
+            };
+            let html = match engine.search().await {
+                Ok(html) => html,
+                Err(e) => {
+                    if cli.verbose {
+                        eprintln!("search failed: {e}");
+                    } else {
+                        eprintln!("search failed");
+                    }
+                    std::process::exit(1);
+                }
+            };
+            match engine.parse_results(&html, cli.top_k as usize) {
+                Ok(results) => results,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    std::process::exit(1);
+                }
             }
-            std::process::exit(1);
         }
-    };
-    let mut results = match engine.parse_results(&html, cli.top_k as usize) {
-        Ok(results) => results,
-        Err(e) => {
-            eprintln!("error: {e}");
-            std::process::exit(1);
+        SearchEngine::Brave => {
+            let engine = match BraveEngine::new(query, client.clone()) {
+                Ok(engine) => engine,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    std::process::exit(1);
+                }
+            };
+            let html = match engine.search().await {
+                Ok(html) => html,
+                Err(e) => {
+                    if cli.verbose {
+                        eprintln!("search failed: {e}");
+                    } else {
+                        eprintln!("search failed");
+                    }
+                    std::process::exit(1);
+                }
+            };
+            match engine.parse_results(&html, cli.top_k as usize) {
+                Ok(results) => results,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    std::process::exit(1);
+                }
+            }
         }
     };
 

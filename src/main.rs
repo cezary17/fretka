@@ -8,6 +8,8 @@ mod types;
 use std::time::Duration;
 
 use clap::{Parser, Subcommand, ValueEnum};
+use engine::SearchEngine;
+use engine::arxiv::ArxivEngine;
 use engine::duckduckgo::DuckDuckGoEngine;
 use fetcher::Fetcher;
 use formatter::json::format_as_json;
@@ -20,6 +22,19 @@ enum OutputFormat {
     Json,
 }
 
+#[derive(Clone, ValueEnum)]
+enum EngineType {
+    DuckDuckGo,
+    Arxiv,
+}
+
+#[derive(Clone, ValueEnum)]
+enum SortOrder {
+    Relevance,
+    SubmittedDate,
+    LastUpdatedDate,
+}
+
 #[derive(Subcommand)]
 enum Commands {
     /// Install fretka skill into coding tool(s)
@@ -27,7 +42,7 @@ enum Commands {
 }
 
 #[derive(Parser)]
-#[command(name = "fretka", about = "Search DuckDuckGo and extract text")]
+#[command(name = "fretka", about = "Search the web and extract text")]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -43,6 +58,14 @@ struct Cli {
     #[arg(short, long, value_enum, default_value_t = OutputFormat::Markdown)]
     format: OutputFormat,
 
+    /// Search engine to use
+    #[arg(short, long, value_enum, default_value_t = EngineType::DuckDuckGo)]
+    engine: EngineType,
+
+    /// Sort order for results (arxiv only)
+    #[arg(long, value_enum)]
+    sort: Option<SortOrder>,
+
     /// Fetch and extract content from result URLs
     #[arg(long)]
     fetch: bool,
@@ -57,6 +80,31 @@ fn build_client() -> Result<reqwest::Client, reqwest::Error> {
         .timeout(Duration::from_secs(10))
         .user_agent("Lynx/2.8.9rel.1")
         .build()
+}
+
+async fn run_engine(
+    engine: &impl SearchEngine,
+    top_k: usize,
+    verbose: bool,
+) -> Vec<types::SearchResult> {
+    let raw = match engine.search().await {
+        Ok(r) => r,
+        Err(e) => {
+            if verbose {
+                eprintln!("search failed: {e}");
+            } else {
+                eprintln!("search failed");
+            }
+            std::process::exit(1);
+        }
+    };
+    match engine.parse_results(&raw, top_k) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("error: {e}");
+            std::process::exit(1);
+        }
+    }
 }
 
 #[tokio::main]
@@ -76,6 +124,11 @@ async fn main() {
         }
     };
 
+    if cli.sort.is_some() && matches!(cli.engine, EngineType::DuckDuckGo) {
+        eprintln!("error: the --sort flag is only supported with --engine arxiv");
+        std::process::exit(1);
+    }
+
     let client = match build_client() {
         Ok(client) => client,
         Err(e) => {
@@ -84,29 +137,34 @@ async fn main() {
         }
     };
 
-    let engine = match DuckDuckGoEngine::new(query, client.clone()) {
-        Ok(engine) => engine,
-        Err(e) => {
-            eprintln!("error: {e}");
-            std::process::exit(1);
+    let sort_by = cli.sort.map(|s| match s {
+        SortOrder::Relevance => "relevance".to_string(),
+        SortOrder::SubmittedDate => "submittedDate".to_string(),
+        SortOrder::LastUpdatedDate => "lastUpdatedDate".to_string(),
+    });
+
+    let top_k = cli.top_k as usize;
+
+    let mut results = match cli.engine {
+        EngineType::DuckDuckGo => {
+            let engine = match DuckDuckGoEngine::new(query, client.clone()) {
+                Ok(e) => e,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    std::process::exit(1);
+                }
+            };
+            run_engine(&engine, top_k, cli.verbose).await
         }
-    };
-    let html = match engine.search().await {
-        Ok(html) => html,
-        Err(e) => {
-            if cli.verbose {
-                eprintln!("search failed: {e}");
-            } else {
-                eprintln!("search failed");
-            }
-            std::process::exit(1);
-        }
-    };
-    let mut results = match engine.parse_results(&html, cli.top_k as usize) {
-        Ok(results) => results,
-        Err(e) => {
-            eprintln!("error: {e}");
-            std::process::exit(1);
+        EngineType::Arxiv => {
+            let engine = match ArxivEngine::new(query, client.clone(), sort_by, top_k) {
+                Ok(e) => e,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    std::process::exit(1);
+                }
+            };
+            run_engine(&engine, top_k, cli.verbose).await
         }
     };
 
@@ -118,7 +176,15 @@ async fn main() {
     if cli.fetch {
         let truncator = MaxLengthTruncator::new(5000);
         let fetcher = Fetcher::new(client, truncator);
-        results = fetcher.fetch_results(results).await;
+        let outcomes = fetcher.fetch_results(results).await;
+        if cli.verbose {
+            for outcome in &outcomes {
+                if let Some(warning) = &outcome.warning {
+                    eprintln!("warning: {warning}");
+                }
+            }
+        }
+        results = outcomes.into_iter().map(|o| o.result).collect();
     }
 
     let output = match cli.format {

@@ -1,29 +1,9 @@
-use std::fmt;
+use std::collections::HashMap;
 
 use scraper::{Html, Selector};
 
+use super::{SearchEngine, SearchError};
 use crate::types::SearchResult;
-
-#[derive(Debug)]
-pub enum SearchError {
-    EmptyQuery,
-    Http(reqwest::Error),
-}
-
-impl fmt::Display for SearchError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            SearchError::EmptyQuery => write!(f, "empty string passed as query"),
-            SearchError::Http(e) => write!(f, "{e}"),
-        }
-    }
-}
-
-impl From<reqwest::Error> for SearchError {
-    fn from(e: reqwest::Error) -> Self {
-        SearchError::Http(e)
-    }
-}
 
 #[derive(Debug)]
 pub struct DuckDuckGoEngine {
@@ -38,8 +18,10 @@ impl DuckDuckGoEngine {
         }
         Ok(Self { query, client })
     }
+}
 
-    pub async fn search(&self) -> Result<String, SearchError> {
+impl SearchEngine for DuckDuckGoEngine {
+    async fn search(&self) -> Result<String, SearchError> {
         Ok(self
             .client
             .post("https://lite.duckduckgo.com/lite/")
@@ -50,11 +32,7 @@ impl DuckDuckGoEngine {
             .await?)
     }
 
-    pub fn parse_results(
-        &self,
-        html: &str,
-        top_k: usize,
-    ) -> Result<Vec<SearchResult>, SearchError> {
+    fn parse_results(&self, html: &str, top_k: usize) -> Result<Vec<SearchResult>, SearchError> {
         let document = Html::parse_document(html);
         let link_selector = Selector::parse("a.result-link").unwrap();
         let snippet_selector = Selector::parse("td.result-snippet").unwrap();
@@ -80,6 +58,7 @@ impl DuckDuckGoEngine {
                     title,
                     url,
                     content,
+                    metadata: HashMap::new(),
                 }
             })
             .collect())

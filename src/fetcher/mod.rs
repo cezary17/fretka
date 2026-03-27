@@ -2,7 +2,12 @@ use dom_smoothie::{Config, Readability, TextMode};
 use futures::future::join_all;
 
 use crate::truncator::Truncator;
-use crate::types::SearchResult;
+use crate::types::{META_PDF_URL, SearchResult};
+
+pub struct FetchOutcome {
+    pub result: SearchResult,
+    pub warning: Option<String>,
+}
 
 pub struct Fetcher<T: Truncator> {
     client: reqwest::Client,
@@ -14,7 +19,7 @@ impl<T: Truncator> Fetcher<T> {
         Self { client, truncator }
     }
 
-    pub async fn fetch_results(&self, results: Vec<SearchResult>) -> Vec<SearchResult> {
+    pub async fn fetch_results(&self, results: Vec<SearchResult>) -> Vec<FetchOutcome> {
         let futures: Vec<_> = results
             .into_iter()
             .map(|result| self.fetch_one(result))
@@ -22,18 +27,65 @@ impl<T: Truncator> Fetcher<T> {
         join_all(futures).await
     }
 
-    async fn fetch_one(&self, mut result: SearchResult) -> SearchResult {
-        match self.fetch_and_extract(&result.url).await {
-            Ok(text) => result.content = self.truncator.truncate(&text),
-            Err(e) => result.content = format!("[Failed to fetch: {e}]"),
+    async fn fetch_one(&self, mut result: SearchResult) -> FetchOutcome {
+        let mut warning = None;
+        match result.metadata.get(META_PDF_URL) {
+            Some(pdf_url) if !pdf_url.is_empty() => {
+                let pdf_url = pdf_url.clone();
+                match self.fetch_pdf(&pdf_url).await {
+                    Ok(text) => result.content = self.truncator.truncate(&text),
+                    Err(e) => {
+                        warning = Some(format!("PDF extraction failed for {pdf_url}: {e}"));
+                        result.content = format!(
+                            "[PDF fetch unsuccessful — falling back to abstract]\n\n{}",
+                            result.content
+                        );
+                    }
+                }
+            }
+            Some(_) => {
+                warning = Some("PDF URL is empty, falling back to abstract".to_string());
+                result.content = format!(
+                    "[PDF fetch unsuccessful — falling back to abstract]\n\n{}",
+                    result.content
+                );
+            }
+            None => match self.fetch_and_extract(&result.url).await {
+                Ok(text) => result.content = self.truncator.truncate(&text),
+                Err(e) => {
+                    warning = Some(format!("failed to fetch {}: {e}", result.url));
+                    result.content = format!("[Failed to fetch: {e}]");
+                }
+            },
         }
-        result
+        FetchOutcome { result, warning }
     }
 
     async fn fetch_and_extract(&self, url: &str) -> Result<String, Box<dyn std::error::Error>> {
         let html = self.client.get(url).send().await?.text().await?;
         extract_content(&html, url)
     }
+
+    async fn fetch_pdf(&self, url: &str) -> Result<String, Box<dyn std::error::Error>> {
+        let bytes = self.client.get(url).send().await?.bytes().await?;
+        extract_pdf_text(&bytes)
+    }
+}
+
+fn extract_pdf_text(bytes: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+    let doc = lopdf::Document::load_mem(bytes)?;
+    let mut text = String::new();
+    let pages = doc.get_pages();
+    for &page_num in pages.keys() {
+        if let Ok(page_text) = doc.extract_text(&[page_num]) {
+            text.push_str(&page_text);
+            text.push('\n');
+        }
+    }
+    if text.trim().is_empty() {
+        return Err("no text extracted from PDF".into());
+    }
+    Ok(text)
 }
 
 fn extract_content(html: &str, url: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -106,14 +158,16 @@ mod tests {
             title: "Test".to_string(),
             url: "http://localhost:1".to_string(), // nothing listening
             content: "original".to_string(),
+            metadata: std::collections::HashMap::new(),
         };
 
-        let fetched = fetcher.fetch_one(result).await;
+        let outcome = fetcher.fetch_one(result).await;
         assert!(
-            fetched.content.starts_with("[Failed to fetch:"),
+            outcome.result.content.starts_with("[Failed to fetch:"),
             "Expected error message, got: {}",
-            fetched.content
+            outcome.result.content
         );
+        assert!(outcome.warning.is_some());
     }
 
     #[tokio::test]
@@ -130,21 +184,23 @@ mod tests {
                 title: "First".to_string(),
                 url: "http://localhost:1".to_string(),
                 content: "a".to_string(),
+                metadata: std::collections::HashMap::new(),
             },
             SearchResult {
                 title: "Second".to_string(),
                 url: "http://localhost:2".to_string(),
                 content: "b".to_string(),
+                metadata: std::collections::HashMap::new(),
             },
         ];
 
         let fetched = fetcher.fetch_results(results).await;
         assert_eq!(fetched.len(), 2);
-        assert_eq!(fetched[0].title, "First");
-        assert_eq!(fetched[1].title, "Second");
+        assert_eq!(fetched[0].result.title, "First");
+        assert_eq!(fetched[1].result.title, "Second");
         // Both should have error messages since nothing is listening
-        assert!(fetched[0].content.starts_with("[Failed to fetch:"));
-        assert!(fetched[1].content.starts_with("[Failed to fetch:"));
+        assert!(fetched[0].result.content.starts_with("[Failed to fetch:"));
+        assert!(fetched[1].result.content.starts_with("[Failed to fetch:"));
     }
 
     #[tokio::test]

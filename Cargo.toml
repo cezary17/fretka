@@ -18,6 +18,9 @@ dom_smoothie = "0.16"
 futures = "0.3"
 inquire = "0.7"
 dirs = "6"
+quick-xml = "0.37"
+urlencoding = "2"
+lopdf = "0.34"
 
 [dev-dependencies]
 serde = {version = "1", features = ["derive"]}

@@ -1,3 +1,8 @@
+---
+name: fretka
+description: Use this skill to search the public web or arXiv for up-to-date documentation, research papers, error fixes, and context missing from the local codebase or model knowledge.
+---
+
 # fretka — Web Search Skill
 
 ## Purpose

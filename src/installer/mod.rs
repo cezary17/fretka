@@ -270,6 +270,9 @@ mod tests {
     #[test]
     fn skill_content_is_not_empty() {
         assert!(!SKILL_CONTENT.is_empty());
+        assert!(SKILL_CONTENT.starts_with("---\n"));
+        assert!(SKILL_CONTENT.contains("\nname: fretka\n"));
+        assert!(SKILL_CONTENT.contains("\ndescription: "));
         assert!(SKILL_CONTENT.contains("fretka"));
     }
 }
